@@ -46,7 +46,7 @@ int main(int argc, char** argv){
     int *recv_data, *offsets, *sends_local_n;
     vector <int> local_data;
 
-    FILE *file = fopen("dados.txt", "r");
+    FILE *file = fopen(argv[1], "r");
     if (file == NULL) {
         fprintf(stderr, "Erro ao abrir o arquivo\n");
         return 1;
@@ -64,7 +64,7 @@ int main(int argc, char** argv){
     for (int i = 0; i < n; i++) {
         fscanf(file, "%d", &data[i]);
     }
-    MPI_Init(&argc, &argv);
+    MPI_Init(NULL,NULL);
     MPI_Status status;
     MPI_Comm_size(MPI_COMM_WORLD,&world_size);
     MPI_Comm_rank(MPI_COMM_WORLD,&world_rank);
