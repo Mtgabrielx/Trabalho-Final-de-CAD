@@ -4,14 +4,10 @@
 #include <time.h>
 
 void parallel_quicksort(int* data, int low, int high);
-int partion(int* data, int low, int high);
-void printf_array(int *data, int size);
 int* read_vector_from_file(const char* filename, int* size);
-void serial_quicksort(int* data, int low, int high);
 void start_parallel_quicksort(int *data, int size);
 void swap(int *a, int *b);
 void validate_sort(int *data, int size);
-int* generate_shuffled_vector(int n);
 
 int main(int argc, char* argv[]) {
     int *data, size;
@@ -19,7 +15,7 @@ int main(int argc, char* argv[]) {
     int threads = atoi(argv[1]);
     omp_set_num_threads(threads);
 
-    FILE *file = fopen("dados.txt", "r");
+    FILE *file = fopen(argv[2], "r");
     if (file == NULL) {
         fprintf(stderr, "Erro ao abrir o arquivo\n");
         return 1;
@@ -27,7 +23,7 @@ int main(int argc, char* argv[]) {
 
     fscanf(file, "%d", &size);
 
-    int *data = (int *)malloc(size * sizeof(int));
+    data = (int *)malloc(size * sizeof(int));
     if (data == NULL) {
         fprintf(stderr, "Erro ao alocar memória\n");
         fclose(file);
@@ -45,37 +41,12 @@ int main(int argc, char* argv[]) {
     end = omp_get_wtime();
     
     validate_sort(data,size);
-
+    printf("%d %d\n",threads,size);
     printf("Tempo: %.4f\n", end-start);
-    printf("start: %.4f\n", end);
-    printf("end: %.4f\n", end);
     
     free(data);
 
     return 0;
-}
-
-int* generate_shuffled_vector(int n) {
-    int *vector = (int *)malloc(n * sizeof(int));
-    if (vector == NULL) {
-        fprintf(stderr, "Falha na alocaÃ§Ã£o de memÃ³ria\n");
-        return NULL;
-    }
-
-    for (int i = 0; i < n; i++) {
-        vector[i] = i;
-    }
-
-    srand(time(NULL));
-
-    for (int i = n - 1; i > 0; i--) {
-        int j = rand() % (i + 1);
-        int temp = vector[i];
-        vector[i] = vector[j];
-        vector[j] = temp;
-    }
-
-    return vector;
 }
 
 void parallel_quicksort(int *data,int low,int high){
@@ -102,31 +73,6 @@ void parallel_quicksort(int *data,int low,int high){
     }
 }
 
-int partion(int* data, int low, int high){
-    int pivot = data[(high+low)/2];
-    int i = low;
-    int j = high;
-
-    while(i <= j){
-        while(data[i] < pivot) 
-            i++;
-        while(data[j] > pivot)
-            j--;
-        if(i<-j){
-            swap(&data[i], &data[j]);
-            i++;
-            j--;
-        }
-    }
-}
-
-void printf_array(int *data, int size) {
-    for(int i=0;i<size;i++){
-        printf("%d ",data[i]);
-    }
-    printf("\n");
-}
-
 int* read_vector_from_file(const char* filename, int* size) {
     FILE *file;
     int *vector;
@@ -142,14 +88,6 @@ int* read_vector_from_file(const char* filename, int* size) {
     fclose(file);
 
     return vector;
-}
-
-void serial_quicksort(int* data, int low, int high){
-    if(low < high){
-        int p = partion(data, low, high);
-        serial_quicksort(data, low, p - 1);
-        serial_quicksort(data, p + 1, high);
-    }
 }
 
 void start_parallel_quicksort(int *data, int size){
@@ -169,6 +107,7 @@ void swap(int *a, int *b) {
 void validate_sort(int *data,int size){
     int valido = 1;
     for(int i=0; i < size-1; i++){
+        printf("%d\n",i);
         if(data[i] > data[i+1]){
             valido = 0;
             break;

@@ -1,70 +1,16 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<math.h>
+#include<string.h>
 #include<mpi.h>
 
-void swap(int* p1, int* p2)
-{
-    int temp;
-    temp = *p1;
-    *p1 = *p2;
-    *p2 = temp;
-}
-
-int partition (int *array,  int low,  int high){
-	
-    int pivot = array[high];
-	int i = (low-1);
-	for ( int j=low; j<=high-1; j++){
-		if (array[j] <= pivot){
-			i++;
-            swap(&array[i],&array[j]);
-			// int temp = array[i];
-			// array[i] = array[j];
-			// array[j] = temp;
-		}
-	}
-    swap(&array[i+1],&array[high]);
-    // int temp = array[i+1];
-    // array[i+1] = array[high];
-    // array[high] = temp;
-
-	return (i + 1);
-}
-
-
-
-void quicksort(int *array,  int low,  int high){
-	if (low<high){
-		int pi = partition(array, low, high);
-		quicksort(array, low, pi-1);
-		quicksort(array, pi+1, high);
-	}
-}
-
-int hyper_partition(int array[],  int low,  int high,  int pivot){
-    int i;
-    if(array[0] > 0){
-        i = low - 1;	
-        for( int j=low; j<high; j++){
-            if(array[j]<=pivot){
-                i++;
-                int temp = array[i];
-                array[i] = array[j];
-                array[j] = temp;
-            }
-        }
-    }
-    else{
-        return 0;
-    }
-	
-    return (i+1);
-}
-
+void hyper_partition(int array[],  int low,  int high,  int pivot, int *maiores,int *size_maiores, int *menores,int *size_menores);
+int partition (int *array,  int low,  int high);
+void quicksort(int *array,  int low,  int high);
+void swap(int* p1, int* p2);
 
 int main(int argc, char *argv[]){
-    int pair_process, rank, size, resto, dim, count, pivot, position, recv_size, k=0, j=0;
+    int pair_process, rank, size, resto, dim, count, pivot, position, k=0, j=0;
     int *data, *send;
     double inicio;
     
@@ -77,7 +23,9 @@ int main(int argc, char *argv[]){
     dim = round(log(size) / log(2));
 
     if(rank == 0){
-        FILE *file = fopen(argv[1], "r");
+        // FILE *file = fopen(argv[1], "r");
+        FILE *file = fopen("dados.txt", "r");
+        // printf("%c",argv);
         if (file == NULL) {
             fprintf(stderr, "Erro ao abrir o arquivo\n");
             MPI_Finalize();
@@ -116,9 +64,7 @@ int main(int argc, char *argv[]){
 
     int *local_data = calloc(sizeof(int),local_n);
     MPI_Scatterv(data, sends_local_n, displs, MPI_INT, local_data, local_n, MPI_INT, 0, MPI_COMM_WORLD);
-    // for(int i=0; i < local_n; i++){
-    //     printf("{%d %d}\n",local_data[i],rank);
-    // }
+
     for(int l=dim-1; l >= 0; l--){
         int color = rank/(size/(k+1));
         k++;
@@ -131,78 +77,30 @@ int main(int argc, char *argv[]){
         MPI_Comm_size(new_comm,&sz);
         
         if(sub_rank == 0){
-            pivot = local_data[local_n-1];
+            pivot = local_data[local_n/2];
         }
 
         MPI_Bcast(&pivot, 1, MPI_INT, 0, new_comm);
+        int keep_size = 0, send_size = 0, recv_size=0;
+        // printf("%d\n",local_n);
+        int *keep_array =  calloc(sizeof(int),local_n);
+        int *send_array =  calloc(sizeof(int),local_n);
 
-        // if(rank == 1 && l ==dim-2){
-        //     for(int i=0; i < local_n; i++){
-        //         printf("{%d %d}\n",local_data[i],rank);
-        //     }
-        //     printf("local n: %d",local_n);
-        // }
-
-        position = hyper_partition(local_data,0,local_n,pivot);
-        // if(l == dim-2 && rank == 2){
-        //     printf("%d %d",position,pivot);
-        // }
-        // printf("%d %d %d\n",position, pivot,rank);
-        int send_size = 0;
-
-        // if(rank == 1 && l ==dim-2){
-        //     for(int i=0; i < local_n; i++){
-        //         printf("{%d %d}\n",local_data[i],rank);
-        //     }
-        // }
+        if(rank >= pair_process){
+            hyper_partition(local_data,0,local_n,pivot,keep_array,&keep_size,send_array,&send_size);
+        }
+        else{
+            hyper_partition(local_data,0,local_n,pivot,send_array,&send_size,keep_array,&keep_size);
+        }
 
         if(rank >= pair_process){ 
-            send_size = position;
             MPI_Send(&send_size,1,MPI_INT,pair_process,1,MPI_COMM_WORLD);    
             MPI_Recv(&recv_size,1,MPI_INT,pair_process,1,MPI_COMM_WORLD,&status);
-            // printf("%d %d %d\n",recv_size,position,rank);
         }else{
-            send_size = local_n-position;
             MPI_Recv(&recv_size,1,MPI_INT,pair_process,1,MPI_COMM_WORLD,&status);
             MPI_Send(&send_size,1,MPI_INT,pair_process,1,MPI_COMM_WORLD);
-            // printf("%d %d %d\n",recv_size,(local_n-position),rank);
         }
-        int keep_size = local_n-send_size;
-        int *keep_array = calloc(sizeof(int),keep_size);
         int *recv_array = calloc(sizeof(int),recv_size);
-        int *send_array = calloc(sizeof(int),send_size);
-        
-        if(pair_process <= rank){              
-            j=0;
-            for(int i=0; i<position; i++){
-                send_array[i] = local_data[i];
-                // if(rank == 1 && l ==dim-2){
-                //     printf("{%d %d %d}\n",local_data[i],position,pivot);
-                // }
-                // if(rank == 1 && l == dim-2){
-                    
-                //     printf("%d %d %d\n",send_array[i],local_data[i],position);
-                    
-                // }
-            }
-                
-            for(int i=position; i<local_n; i++){
-                // if(rank == 1 && l ==dim-2){
-                //     printf("{%d %d}\n",local_data[i],i);
-                // }
-                keep_array[j] = local_data[i];   
-                j++;
-            }
-        }
-        else{   
-            j=0;       
-            for(int i=position; i<local_n; i++){
-                send_array[j] = local_data[i];  
-                j++;
-            } 
-            for(int i=0; i<position; i++)                  
-                keep_array[i] = local_data[i];   
-        }
         
         if(pair_process < rank){
             MPI_Send(send_array, send_size, MPI_INT, pair_process, 0, MPI_COMM_WORLD);
@@ -211,49 +109,21 @@ int main(int argc, char *argv[]){
         else{
             MPI_Recv(recv_array, recv_size, MPI_INT, pair_process, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             MPI_Send(send_array, send_size, MPI_INT, pair_process, 0, MPI_COMM_WORLD);
-        }
-
-        // if(i == dim-2){
-        //     for(int i=0; i <recv_size;i++){
-        //         printf("[%d %d %d]\n", recv_array[i], i,rank);
-        //     }
-        // }
-        // if(i == dim-1){
-        //     for(int i=0; i <send_size;i++){
-        //         printf("[%d %d %d]\n", send_array[i], i,rank);
-        //     }
-        // }
-        // if(i == dim-1){
-        //     for(int i=0; i <(local_n-send_size);i++){
-        //         printf("{%d %d %d}\n", keep_array[i], i,rank);
-        //     }
-        // }
-        
+        }        
 
         local_n = recv_size+keep_size;
-        // if(rank == 1 && l ==dim-1){
-        //     printf("local n: %d, recv_size: %d, keep_size: %d",local_n,recv_size,keep_size);
-        // }
         
         if(local_n > 0){
             local_data = realloc(local_data, (keep_size+recv_size) * sizeof(int));
-            j=0;
-            for( int i = 0; i < keep_size; i++){
-                local_data[j] = keep_array[i];
-                j++;
-            }
-            for( int i = 0; i < recv_size;i++){
-                local_data[j] = recv_array[i];
-                j++;
-            }
+            memcpy(local_data, keep_array, keep_size * sizeof(int));
+            memcpy(local_data + keep_size, recv_array, recv_size * sizeof(int));
         }
         else{
             local_data = realloc(local_data, sizeof(int));
             local_data[0] = -1;
         }
-        
-
-        // printf("%d %d %d %d\n", pair_process, position, pivot, rank);
+        free(keep_array);
+        free(send_array);
     }
 
     quicksort(local_data,0,local_n-1);
@@ -264,7 +134,7 @@ int main(int argc, char *argv[]){
     
     for(int i=0; i<local_n; i++)
         sorted_chunk_array[i] = local_data[i];         
-
+ 
     if(rank==0){
         send_n[0] = local_n;
         displacement[0] = 0;
@@ -301,4 +171,60 @@ int main(int argc, char *argv[]){
     }
     MPI_Finalize();
     return 0;
+}
+
+void swap(int* p1, int* p2)
+{
+    int temp;
+    temp = *p1;
+    *p1 = *p2;
+    *p2 = temp;
+}
+
+int partition (int *array,  int low,  int high){
+	
+    int pivot = array[(high+low)/2];
+	int i = (low-1);
+	for ( int j=low; j<=high-1; j++){
+		if (array[j] <= pivot){
+			i++;
+            swap(&array[i],&array[j]);
+		}
+	}
+    swap(&array[i+1],&array[high]);
+
+	return (i + 1);
+}
+
+void quicksort(int *array,  int low,  int high){
+	if (low<high){
+		int pi = partition(array, low, high);
+		quicksort(array, low, pi-1);
+		quicksort(array, pi+1, high);
+	}
+}
+
+void hyper_partition(int array[],  int low,  int high,  int pivot, int *maiores,int *size_maiores, int *menores,int *size_menores){
+    int i;
+    int temp_size_maiores = 0;
+    int temp_size_menores = 0;
+    if(array[0] > 0){
+        i = low - 1;	
+        for( int j=low; j<high; j++){
+            if(array[j]<=pivot){
+                menores[temp_size_menores] = array[j];
+                temp_size_menores++;
+                i++;
+                int temp = array[i];
+                array[i] = array[j];
+                array[j] = temp;
+            }
+            else{
+                maiores[temp_size_maiores] = array[j];
+                temp_size_maiores++;
+            }
+        }
+    }
+    (*size_maiores) = temp_size_maiores;
+    (*size_menores) = temp_size_menores;
 }

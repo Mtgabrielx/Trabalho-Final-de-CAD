@@ -1,223 +1,201 @@
-#include<math.h>
-#include "mpi.h"
+/*
+   Hyperquick sort
+   No of processor must be power of two
+   Author :- Suraj Desmukh
+*/
 #include<stdio.h>
 #include<stdlib.h>
-#include<string.h>
-#include <time.h>
+#include<math.h>
+#include<mpi.h>
 
-int* generate_shuffled_vector(int n) {
-    int *vector = (int *)malloc(n * sizeof(int));
-    if (vector == NULL) {
-        fprintf(stderr, "Falha na alocaÃ§Ã£o de memÃ³ria\n");
-        return NULL;
+void quicksort(float *array, int firstIndex, int lastIndex)
+{
+    int pivotIndex, temp, index1, index2;
+
+    if(firstIndex < lastIndex)
+    {
+        pivotIndex = firstIndex;
+        index1 = firstIndex;
+        index2 = lastIndex;
+        while(index1 < index2)
+        {
+            while(array[index1] <= array[pivotIndex] && index1 < lastIndex)
+            {
+                index1++;
+            }
+            while(array[index2]>array[pivotIndex])
+            {
+                index2--;
+            }
+            if(index1<index2)
+            {
+                temp = array[index1];
+                array[index1] = array[index2];
+                array[index2] = temp;
+            }
+        }
+        temp = array[pivotIndex];
+        array[pivotIndex] = array[index2];
+        array[index2] = temp;
+        quicksort(array, firstIndex, index2-1);
+        quicksort(array, index2+1, lastIndex);
     }
-
-    for (int i = 0; i < n; i++) {
-        vector[i] = i;
-    }
-
-    srand(time(NULL));
-
-    for (int i = n - 1; i > 0; i--) {
-        int j = rand() % (i + 1);
-        int temp = vector[i];
-        vector[i] = vector[j];
-        vector[j] = temp;
-    }
-
-    return vector;
 }
 
-
-void swap(int *a, int *b) {
-  int t = *a;
-  *a = *b;
-  *b = t;
+void list(float *array,float median,int c,int *lc,int *hc,int rank)  // c= count of nos in array
+{
+   int i=0,count=0,l=0,h=0;
+   for(i=0;i<c;i++)
+   {
+      if(array[i]<=median)
+       {  
+          l++; 
+       }
+       else break;  
+   }
+   h=c-l;
+   *lc=l;
+   *hc=h;
+    //printf("\nrank=%d,low=%d,high=%d\n",rank,l,h);
 }
 
-// function to find the partition position
-int partition(int array[], int low, int high) {
-  
-  // select the rightmost element as pivot
-  int pivot = array[high];
-  
-  // pointer for greater element
-  int i = (low - 1);
-
-  // traverse each element of the array
-  // compare them with the pivot
-  for (int j = low; j < high; j++) {
-    if (array[j] <= pivot) {
-        
-      // if element smaller than pivot is found
-      // swap it with the greater element pointed by i
-      i++;
-      
-      // swap element at i with element at j
-      swap(&array[i], &array[j]);
+int main(int argc,char *argv[])
+{
+   int rank,size,i=0,j=0,lw=0,rlw=0,hi=0,rhi=0;
+   MPI_Init(&argc,&argv);
+   MPI_Comm_size(MPI_COMM_WORLD,&size);
+   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
+   int count=0,*sendcount,*displacement;
+   char c;
+   float *data,n,*rec_data,median,*low,*high;
+   FILE *fp;
+   sendcount = (int*)calloc(sizeof(float),size);
+   displacement = (int*)calloc(sizeof(float),size);
+   if(rank==0)
+   {
+    if((size & (~size+1))!=size) { printf("No of proc must be power of two.\nCode Terminated\n"); exit(0); }
+    fp=fopen("vector.txt","r");
+    while(fscanf(fp,"%f",&n)!=-1)
+    { 
+      c=fgetc(fp);
+      count++;
     }
-  }
-
-  // swap the pivot element with the greater element at i
-  swap(&array[i + 1], &array[high]);
-  
-  // return the partition point
-  return (i + 1);
-}
-
-void DoquickSort(int array[], int low, int high) {
-  if (low < high) {
-    
-    // find the pivot element such that
-    // elements smaller than pivot are on left of pivot
-    // elements greater than pivot are on right of pivot
-    int pi = partition(array, low, high);
-    
-    // recursive call on the left of pivot
-    DoquickSort(array, low, pi - 1);
-    
-    // recursive call on the right of pivot
-    DoquickSort(array, pi + 1, high);
-  }
-}
-
-void printArray(int array[], int size) {
-  for (int i = 0; i < size; ++i) {
-    printf("%d  ", array[i]);
-  }
-  printf("\n");
-}
-
-void main(int argc, char** argv){
-    int local_n, logp, n, world_rank, median, np, pivot;
-    int *data,*local_data, *recv_buf, *merge_buf;
-    double start,end;
-    char msg[100];
-    MPI_Status status;
-
-    MPI_Init(&argc,&argv);
-    MPI_Comm_size (MPI_COMM_WORLD,&np);
-    MPI_Comm_rank (MPI_COMM_WORLD,&world_rank);
-    
-    logp = round(log(np)/log(2));
-    
-    if(world_rank == 0){
-        n = 1000;
-        data = generate_shuffled_vector(n);
+    fseek( fp, 0, SEEK_SET );
+    data = (float*)calloc(sizeof(float),count);
+    for(i=0;i<count;i++){
+      fscanf(fp,"%f",&data[i]);
+//      printf("\n%f\n",data[i]); 
     }
-    MPI_Bcast(&n,1,MPI_INT,0,MPI_COMM_WORLD);
-    local_data = (int*) malloc(sizeof(int)*n);
-    recv_buf = (int*) malloc(sizeof(int)*n);
-    merge_buf = (int*) malloc(sizeof(int)*n);
-    local_n = n/np;
-    MPI_Scatter(data,local_n,MPI_INT,local_data,local_n,MPI_INT,0,MPI_COMM_WORLD);
-    
-    printArray(local_data,local_n);
-
-    if(world_rank == 0){
-        start = MPI_Wtime();
-        printf("start: %d\n",start);
+    i=0; 
+    while(1)
+    {
+       for(j=0;j<size;j++)
+       {
+          sendcount[j] = sendcount[j] + 1; 
+          i++; 
+          if(i==count) break;
+       } 
+       if(i==count) break;
     }
-
-    DoquickSort(local_data,0,local_n-1);
-
-    for(int iter = 0; iter < logp; iter++){
-        //printf("iter : %d\n",iter);
-        // create communicator based on no of iteration
-        int color = pow(2,iter)*world_rank/np;
-        MPI_Comm new_comm;
-        MPI_Comm_split(MPI_COMM_WORLD, color, world_rank, &new_comm);
-        int rank,sz;
-        MPI_Comm_rank(new_comm,&rank);
-        MPI_Comm_size(new_comm,&sz);
-
-        // process 0 will broadcast its median
-        median = local_data[local_n/2];
-        MPI_Bcast(&median, 1, MPI_INT, 0, new_comm);
-        //printf("median : %d\n",median);
-        // each process in upper half will swap its low list with high list of corresponding lower half
-        pivot = 0;
-        while(pivot < local_n && local_data[pivot] < median)
-            pivot++;
-
-        int pair_process = (rank+(sz>>1))%sz;
-        
-        if(rank >= (sz>>1)){ // in upper half
-            MPI_Send(local_data,pivot,MPI_INT,pair_process,1,new_comm);    
-            MPI_Recv(recv_buf,n,MPI_INT,pair_process,1,new_comm,&status);
-        }else{
-            MPI_Recv(recv_buf,n,MPI_INT,pair_process,1,new_comm,&status);
-            MPI_Send(local_data+pivot,local_n - pivot,MPI_INT,pair_process,1,new_comm);
+    for(i=1;i<size;i++)
+    {
+      displacement[i] = displacement[i-1] + sendcount[i-1];
+    } 
+   }
+   MPI_Bcast(sendcount,size,MPI_INT,0,MPI_COMM_WORLD); 
+   rec_data = (float*)calloc(sizeof(float),sendcount[rank]);
+   MPI_Scatterv(data,sendcount,displacement,MPI_FLOAT,rec_data,sendcount[rank],MPI_FLOAT,0,MPI_COMM_WORLD); 
+   quicksort(rec_data,0,sendcount[rank]-1);
+  /* for(i=0;i<sendcount[rank];i++)
+      printf("\nrank=%d data[%d]=%f\n",rank,i,rec_data[i]);*/
+   if(rank==0) 
+   {
+      i = (sendcount[0] - 1)/2;   // i = median index 
+      median = rec_data[i]; 
+      //printf("median=%f\n",median);
+   }
+   MPI_Bcast(&median,1,MPI_FLOAT,0,MPI_COMM_WORLD);
+   list(rec_data,median,sendcount[rank],&lw,&hi,rank);
+   j=lw;
+   low  = (float*)calloc(sizeof(float),lw);
+   high = (float*)calloc(sizeof(float),hi);
+   for(i=0;i<lw;i++)
+     low[i] = rec_data[i];
+   for(i=0;i<hi;i++)
+   {
+     high[i] = rec_data[j];
+     j++;  
+   } 
+   /*for(i=0;i<lw;i++)
+    printf("rank=%d low[%d]=%f\n",rank,i,low[i]);
+   for(i=0;i<hi;i++)
+    printf("rank=%d high[%d]=%f\n",rank,i,high[i]);*/
+   for(i=0;i<(size/2);i++)
+   {
+      if(rank==i)
+      { 
+        MPI_Send(&hi,1,MPI_INT,rank + (size/2),0,MPI_COMM_WORLD);
+        MPI_Send(high,hi,MPI_FLOAT,rank + (size/2),0,MPI_COMM_WORLD); 
+        MPI_Recv(&rlw,1,MPI_INT,rank + (size/2),0,MPI_COMM_WORLD,MPI_STATUS_IGNORE); 
+        low = (float*)realloc(low,(lw+rlw)*sizeof(float));
+        MPI_Recv(low+lw,rlw,MPI_FLOAT,rank + (size/2),0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);   
+        lw=lw+rlw;     
+      } 
+      else{ 
+       if(rank==(i+(size/2)))
+       {  
+          MPI_Recv(&rhi,1,MPI_INT,i,0,MPI_COMM_WORLD,MPI_STATUS_IGNORE); 
+          high = (float*)realloc(high,(hi+rhi)*sizeof(float));
+          MPI_Recv(high+hi,rhi,MPI_FLOAT,i,0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+          MPI_Send(&lw,1,MPI_INT,i,0,MPI_COMM_WORLD);
+          MPI_Send(low,lw,MPI_FLOAT,i,0,MPI_COMM_WORLD);    
+          hi=hi+rhi;        
+       }
+      } 
+   }
+   for(i=1;i<(size/2);i++)
+   {
+      if(rank==0)
+        {
+           MPI_Recv(&rlw,1,MPI_INT,i,0,MPI_COMM_WORLD,MPI_STATUS_IGNORE); 
+           low = (float*)realloc(low,(lw+rlw)*sizeof(float));
+           MPI_Recv(low+lw,rlw,MPI_FLOAT,i,0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);    
+           lw = lw+rlw;         
         }
-
-        //printf("swapped iter: %d rank: %d\n",iter,world_rank);
-        // merge the two sorted lists
-        int recv_count;
-            MPI_Get_count(&status,MPI_INT,&recv_count);
-        
-        int i,j = 0,k = 0, i_end;
-        if(rank >= (sz>>1)){
-            i = pivot, i_end = local_n;
-            local_n = local_n - pivot + recv_count;
-        }else{
-            i = 0, i_end = pivot;
-            local_n = pivot + recv_count;
+      else if(rank<(size/2))
+        {
+            MPI_Send(&lw,1,MPI_INT,0,0,MPI_COMM_WORLD);
+            MPI_Send(low,lw,MPI_FLOAT,0,0,MPI_COMM_WORLD);
         }
-
-        while(i < i_end && j < recv_count){
-            if(local_data[i] < recv_buf[j])
-                merge_buf[k++] = local_data[i++];
-            else
-                merge_buf[k++] = recv_buf[j++];
+      if(rank==(size/2))
+        {
+           MPI_Recv(&rhi,1,MPI_INT,i+(size/2),0,MPI_COMM_WORLD,MPI_STATUS_IGNORE); 
+           high = (float*)realloc(high,(hi+rhi)*sizeof(float));
+           MPI_Recv(high+hi,rhi,MPI_FLOAT,i+(size/2),0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);    
+           hi = hi+rhi;     
         }
-        while(i < i_end)
-            merge_buf[k++] = local_data[i++];
-        while(j < recv_count)
-            merge_buf[k++] = recv_buf[j++];
-    
-        // copy merge buf into local_data
-        for(int i = 0; i < local_n; i++)
-            local_data[i] = merge_buf[i];
-        
-        //printf("merged iter: %d rank: %d\n",iter,world_rank);
-
-        MPI_Comm_free(&new_comm);
-    }
-
-    MPI_Barrier(MPI_COMM_WORLD);
-    
-    if(world_rank == 0){
-        end = MPI_Wtime();
-        printf("end: %d\n",end);
-    }
-    // print the output
-    if(world_rank != 0)
-        MPI_Send(local_data,local_n,MPI_INT,0,1,MPI_COMM_WORLD);
-
-    //printf("sent %d\n",world_rank);
-
-    if(world_rank == 0){
-        int recv_count = local_n;
-        for(int i = 1; i < np; i++){
-            MPI_Recv(local_data + recv_count,n,MPI_INT,i,1,MPI_COMM_WORLD,&status);
-            int temp_count;
-            MPI_Get_count(&status,MPI_INT,&temp_count);
-            recv_count += temp_count;
-            //printf("recieved from %d\n",i);
-        }
-        char* filename = argv[2];
-        FILE *file = fopen(filename,"w");
-        if (file) {        
-            for(int i = 0 ; i < n; i++)
-                fprintf(file,"%d\n",local_data[i]);
-            for(int i = 1 ; i < n; i++)
-                if(local_data[i-1] > local_data[i])
-                    printf("ERROR: %d\n",i);
-        }
-        fclose(file);
-
-        printf("time taken: %lf\n",end-start);
-    }
-
-    MPI_Finalize();
+      else if(rank>(size/2))
+        {
+            MPI_Send(&hi,1,MPI_INT,(size/2),0,MPI_COMM_WORLD);
+            MPI_Send(high,hi,MPI_FLOAT,(size/2),0,MPI_COMM_WORLD);
+        }  
+   }
+   if(rank==0)  
+     {  
+       quicksort(low,0,lw-1);
+       printf("Sorted list:\n");
+       for(i=0;i<lw;i++) printf("%.2f\n",low[i]);
+       MPI_Recv(&hi,1,MPI_INT,(size/2),0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+       high = (float*)realloc(high,hi*sizeof(float));
+       MPI_Recv(high,hi,MPI_FLOAT,(size/2),0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+       for(i=0;i<hi;i++) printf("%.2f\n",high[i]);
+     }
+   else if(rank==(size/2))
+     {
+       quicksort(high,0,hi-1);
+       MPI_Send(&hi,1,MPI_INT,0,0,MPI_COMM_WORLD); 
+       MPI_Send(high,hi,MPI_FLOAT,0,0,MPI_COMM_WORLD);  
+     }
+   MPI_Finalize();
+   return 0;
 }
